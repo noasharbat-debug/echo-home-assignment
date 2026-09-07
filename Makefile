@@ -23,6 +23,13 @@
 # then runs the compatibility test suite (`make test`, above). Each step
 # depends on the previous one's output, so `make all` alone is sufficient
 # end to end - no manual ordering required.
+#
+# NOTE: $(MAKE) is quoted below deliberately. On a host where GNU Make isn't
+# on PATH (e.g. a fresh GnuWin32 install at "C:/Program Files (x86)/GnuWin32/
+# bin/make.exe"), $(MAKE) expands to that path verbatim, including the spaces
+# and parentheses - unquoted, the recipe's shell chokes on it ("syntax error
+# near unexpected token `('"). This was caught for real during Mission 5's
+# clean-clone reproducibility run and is not a hypothetical.
 
 PYTHON ?= py
 
@@ -31,7 +38,7 @@ PYTHON ?= py
 all: build image test
 
 build:
-	$(MAKE) -C build build
+	"$(MAKE)" -C build build
 
 image:
 	docker build -f Containerfile -t echo-nginx .
