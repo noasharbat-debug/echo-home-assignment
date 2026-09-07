@@ -1,0 +1,15 @@
+# Build artifacts only — scan reports (.txt/.json) and patches must stay tracked.
+
+# Downloaded nginx source tarball(s)
+build/nginx-*.tar.gz
+build/nginx-*.tar.gz.asc
+*.tar.gz
+
+# Compiled .deb packages
+*.deb
+build/*.deb
+
+# Intermediate build/container layers and extracted source trees
+build/nginx-*/
+build/*.tmp/
+build/work/
