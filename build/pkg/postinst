@@ -1,0 +1,24 @@
+#!/bin/sh
+set -e
+
+# Create the nginx system user/group to match the compiled --user=nginx
+# --group=nginx configure flags. useradd/groupadd come from the `passwd`
+# package, which is present in every Debian base (including bookworm-slim).
+if ! getent group nginx >/dev/null 2>&1; then
+    groupadd --system nginx
+fi
+if ! getent passwd nginx >/dev/null 2>&1; then
+    useradd --system --no-create-home --home /nonexistent \
+        --shell /usr/sbin/nologin --gid nginx nginx
+fi
+
+# Runtime cache/log directories referenced by the --http-*-temp-path and
+# --lock-path / --pid-path configure flags. nginx's own `make install`
+# creates most of these under the package root already; this is a safety
+# net for anything missing plus correct ownership.
+mkdir -p /var/cache/nginx/client_temp /var/cache/nginx/proxy_temp \
+    /var/cache/nginx/fastcgi_temp /var/cache/nginx/uwsgi_temp \
+    /var/cache/nginx/scgi_temp /var/log/nginx
+chown -R nginx:nginx /var/cache/nginx
+
+exit 0

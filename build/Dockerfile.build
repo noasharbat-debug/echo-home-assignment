@@ -1,0 +1,104 @@
+# Echo — nginx 1.25.5 from-source builder.
+#
+# This image does ALL compilation, patching, and .deb packaging. The host
+# (Windows, no Debian toolchain) only ever runs `docker build` against this
+# file — it never runs configure/make itself. The final stage's /output
+# directory holds the built .deb; the Makefile copies it out to
+# build/output/ on the host via `docker create` + `docker cp`.
+
+FROM debian:bookworm-slim AS builder
+
+ARG NGINX_VERSION=1.25.5
+ARG PKG_VERSION=1.25.5-echo1
+
+# --- Build dependencies -----------------------------------------------
+# Also upgrade openssl/libssl3/libssl-dev here (CVE-2024-6119, bump fix) so
+# nginx links/compiles against the patched headers and the builder's own
+# runtime verification steps use the fixed library. NOTE: this alone does
+# NOT fix the CVE in the shipped image — libssl3 here lives in the builder
+# stage, which is discarded. The *runtime* stage (owned by Mission 3's
+# Containerfile) must separately install/upgrade libssl3 from the same
+# bookworm + bookworm-security repos. See PROGRESS.md Mission 2 section for
+# the verified proof of this.
+RUN apt-get update -qq && \
+    apt-get install -y --no-install-recommends \
+        build-essential ca-certificates curl patch \
+        libpcre3-dev zlib1g-dev libssl-dev \
+        dpkg-dev fakeroot && \
+    apt-get install -y --only-upgrade openssl libssl3 libssl-dev && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+
+# --- Source ---------------------------------------------------------
+RUN curl -fsSL "https://nginx.org/download/nginx-${NGINX_VERSION}.tar.gz" -o nginx.tar.gz && \
+    tar -xzf nginx.tar.gz
+
+# --- Backport CVE-2024-7347 (mp4 module buffer over-read) ------------
+# Official nginx.org patch, verified to apply cleanly with -p1 against the
+# real 1.25.5 tree (see PROGRESS.md transcript). Both this and the fallback
+# CVE-2026-32647 patch live under build/patches/ as due-diligence evidence;
+# only this one is applied to the shipped build.
+COPY patches/CVE-2024-7347.patch /build/CVE-2024-7347.patch
+RUN cd nginx-${NGINX_VERSION} && \
+    patch -p1 --dry-run < /build/CVE-2024-7347.patch && \
+    patch -p1 < /build/CVE-2024-7347.patch
+
+# --- Configure & build ------------------------------------------------
+# Exact flags copied from build/original-nginx-V.txt (the baseline image's
+# own `nginx -V` configure-arguments line) so the module set and paths are
+# a drop-in match for nginx:1.25-bookworm.
+WORKDIR /build/nginx-${NGINX_VERSION}
+RUN ./configure \
+        --prefix=/etc/nginx \
+        --sbin-path=/usr/sbin/nginx \
+        --modules-path=/usr/lib/nginx/modules \
+        --conf-path=/etc/nginx/nginx.conf \
+        --error-log-path=/var/log/nginx/error.log \
+        --http-log-path=/var/log/nginx/access.log \
+        --pid-path=/var/run/nginx.pid \
+        --lock-path=/var/run/nginx.lock \
+        --http-client-body-temp-path=/var/cache/nginx/client_temp \
+        --http-proxy-temp-path=/var/cache/nginx/proxy_temp \
+        --http-fastcgi-temp-path=/var/cache/nginx/fastcgi_temp \
+        --http-uwsgi-temp-path=/var/cache/nginx/uwsgi_temp \
+        --http-scgi-temp-path=/var/cache/nginx/scgi_temp \
+        --user=nginx --group=nginx \
+        --with-compat --with-file-aio --with-threads \
+        --with-http_addition_module --with-http_auth_request_module --with-http_dav_module \
+        --with-http_flv_module --with-http_gunzip_module --with-http_gzip_static_module \
+        --with-http_mp4_module --with-http_random_index_module --with-http_realip_module \
+        --with-http_secure_link_module --with-http_slice_module --with-http_ssl_module \
+        --with-http_stub_status_module --with-http_sub_module --with-http_v2_module \
+        --with-http_v3_module --with-mail --with-mail_ssl_module --with-stream \
+        --with-stream_realip_module --with-stream_ssl_module --with-stream_ssl_preread_module \
+        --with-cc-opt='-g -O2 -ffile-prefix-map=/data/builder/debuild/nginx-1.25.5/debian/debuild-base/nginx-1.25.5=. -fstack-protector-strong -Wformat -Werror=format-security -Wp,-D_FORTIFY_SOURCE=2 -fPIC' \
+        --with-ld-opt='-Wl,-z,relro -Wl,-z,now -Wl,--as-needed -pie' \
+    && make -j"$(nproc)"
+
+# --- Package as a .deb -------------------------------------------------
+COPY pkg/control.template /build/control.template
+COPY pkg/postinst /build/postinst
+RUN set -e; \
+    PKGROOT=/build/pkgroot; \
+    mkdir -p "$PKGROOT/DEBIAN"; \
+    make install DESTDIR="$PKGROOT"; \
+    mkdir -p "$PKGROOT/var/cache/nginx/client_temp" "$PKGROOT/var/cache/nginx/proxy_temp" \
+             "$PKGROOT/var/cache/nginx/fastcgi_temp" "$PKGROOT/var/cache/nginx/uwsgi_temp" \
+             "$PKGROOT/var/cache/nginx/scgi_temp" "$PKGROOT/var/log/nginx" "$PKGROOT/var/run"; \
+    sed "s/__PKG_VERSION__/${PKG_VERSION}/" /build/control.template > "$PKGROOT/DEBIAN/control"; \
+    cp /build/postinst "$PKGROOT/DEBIAN/postinst"; \
+    chmod 0755 "$PKGROOT/DEBIAN/postinst"; \
+    mkdir -p /output; \
+    dpkg-deb --root-owner-group --build "$PKGROOT" "/output/nginx-echo_${PKG_VERSION}_amd64.deb"; \
+    ls -la /output
+
+# --- Sanity: dpkg-deb can describe/list what it built -------------------
+RUN dpkg-deb -I /output/*.deb && dpkg-deb -c /output/*.deb | head -n 40
+
+FROM scratch AS output
+COPY --from=builder /output /output
+# `scratch` has no shell/init; this CMD is never executed — it only exists
+# so `docker create` (used by the Makefile to extract /output via `docker
+# cp`) has a command to record and doesn't error with "no command specified".
+CMD ["/output"]

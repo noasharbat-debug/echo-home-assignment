@@ -1,0 +1,8 @@
+# Force LF line endings for all text files in the working tree, regardless of a
+# clone's core.autocrlf setting. This repo's Linux/Docker artifacts (shell
+# entrypoint scripts under runtime/, Dockerfiles, patch files) break if checked
+# out with CRLF on Windows (e.g. a "#!/bin/sh\r" shebang fails inside the Linux
+# container, and CRLF vs LF context lines can make `patch -p1` refuse to apply).
+# This was caught during Mission 5's clean-clone reproducibility check on a
+# Windows host with core.autocrlf=true set globally.
+* text=auto eol=lf

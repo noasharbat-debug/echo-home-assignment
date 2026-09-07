@@ -1,0 +1,41 @@
+{
+  "@context": "https://openvex.dev/ns/v0.2.0",
+  "@id": "https://github.com/echo-project/echo-nginx/vex/CVE-2024-7347",
+  "author": "Echo project (Mission 4)",
+  "role": "Component Analyst",
+  "timestamp": "2026-09-07T00:00:00Z",
+  "version": 1,
+  "statements": [
+    {
+      "vulnerability": {
+        "name": "CVE-2024-7347",
+        "description": "nginx mp4 module: buffer over-read while calculating trak->end_offset in ngx_http_mp4_crop_stsc_data() when processing an mp4 file with unordered stsc (sample-to-chunk) atom chunks; can crash a worker process via a crafted mp4 file when the mp4 directive is in use.",
+        "aliases": ["GHSA-3r23-64c4-mj87"]
+      },
+      "timestamp": "2026-09-07T00:00:00Z",
+      "products": [
+        {
+          "@id": "pkg:deb/debian/nginx-echo@1.25.5-echo1?arch=amd64&distro=debian-12.15",
+          "identifiers": {
+            "purl": "pkg:deb/debian/nginx-echo@1.25.5-echo1?arch=amd64&distro=debian-12.15"
+          }
+        },
+        {
+          "@id": "pkg:oci/echo-nginx@sha256%3A8343b21f39127eb1cee93fc075629f40fc80a30aa405de392c72bba4a85e7abb",
+          "identifiers": {
+            "purl": "pkg:oci/echo-nginx@sha256%3A8343b21f39127eb1cee93fc075629f40fc80a30aa405de392c72bba4a85e7abb"
+          }
+        },
+        {
+          "@id": "cpe:2.3:a:nginx:nginx:1.25.5:*:*:*:*:*:*:*",
+          "identifiers": {
+            "cpe23": "cpe:2.3:a:nginx:nginx:1.25.5:*:*:*:*:*:*:*"
+          }
+        }
+      ],
+      "status": "fixed",
+      "action_statement": "Backported the official nginx.org standalone patch (https://nginx.org/download/patch.2024.mp4.txt, mirrored in this repo at build/patches/CVE-2024-7347.patch) onto the nginx 1.25.5 source tree used for this image, applied cleanly with `patch -p1` before ./configure && make (see build/Dockerfile.build and PROGRESS.md Mission 2 section for the verified apply transcript). The patch widens the `n` counter in ngx_http_mp4_crop_stsc_data() from uint32_t to uint64_t (avoiding the overflow in `(next_chunk - chunk) * samples`) and adds an explicit `next_chunk < chunk` rejection with an error log line, matching the fix shipped upstream in nginx 1.27.1/1.26.2. This is the same fix upstream ships; it is not a mitigation or workaround.",
+      "impact_statement": "Rationale for 'fixed' rather than a version-string bump: nginx's own reported version string is unchanged (still 'nginx/1.25.5', since this is a source-level backport rather than an upgrade to 1.27.1/1.26.2), so vulnerability scanners that match purely by package name + upstream version string (Trivy's Debian tracker, Grype's NVD/CPE range matching) cannot detect this fix from version metadata alone. We independently verified: (1) neither Trivy nor Grype flagged CVE-2024-7347 against nginx in this project's own baseline scan of the unpatched nginx:1.25-bookworm image either (see baseline-trivy.txt / baseline-grype.txt - grep for CVE-2024-7347 returns zero hits in both), so there is no 'before' finding for either scanner to suppress in the first place for this specific CVE; and (2) the --vex flag mechanics themselves do work correctly on this Trivy/Grype version pair (verified with an unrelated canary CVE that IS present in the scan output, which the --vex flag successfully suppressed in both tools - see PROGRESS.md Mission 4 section for the real command transcripts). This statement is included per standard VEX practice regardless of current scanner visibility, since it (a) documents the true fix status for human/downstream consumers of this image, (b) is the correct artifact for exactly the 'source patch without a version bump' scenario, and (c) will take effect automatically the moment either scanner's database adds CVE-2024-7347 coverage for the nginx package (Trivy currently has zero nginx-package entries in its Debian tracker at all; Grype's NVD/CPE dataset for nginx 1.25.5 covers a different set of CVEs that does not currently include this one)."
+    }
+  ]
+}
