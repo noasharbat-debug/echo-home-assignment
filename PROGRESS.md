@@ -1856,3 +1856,359 @@ ignored or forced to match the mission brief's prediction.
    - The large-body scenario deliberately targets `/`, not the custom-conf
      route, for a documented, real reason (B.3) — worth a one-line mention
      in the README's test section so it doesn't look like an oversight.
+
+---
+
+## Mission 5: README & Final Reproducibility Pass
+
+Status: COMPLETE. This is the final mission — there is no Mission 6, so this
+section plus `README.md` are meant to stand as the complete, accurate record of
+what was built. All commands and output below are real, pasted verbatim from this
+session. One genuine bug was found and fixed during the clean-clone run (not
+papered over) — see §3.
+
+### 0. Starting state
+
+Read this entire file (all four prior missions' sections) before doing anything
+else, per instructions. Confirmed via `docker images`/`docker ps -a` that
+`echo-nginx-builder` and `echo-nginx` both already existed locally from Mission
+4's session, and that `docker ps -a` showed only the pre-existing, unrelated
+`cover-take-home-postgres-1` container — clean starting state.
+
+**Also discovered: this repository had zero git commits** (`git status` on a
+freshly-read `~/Projects/echo-home-assignment` showed "No commits yet" with every
+file untracked). Since a genuine "clean-clone" reproducibility test requires an
+actual git history to clone, and this is the final mission with no future mission
+to hand this off to, an initial commit of the full working tree was made as part
+of completing this mission's own explicit, required deliverable (the clean-clone
+run) — not a discretionary/proactive commit. Two commits exist as of this
+mission: the initial squashed snapshot of all 4 prior missions' work plus this
+mission's README/Makefile/`.gitattributes` additions, and a second commit fixing
+the real bug found in §3 below.
+
+### 1. Root `Makefile` — `all` target added
+
+Added `all: build image test` plus `build` (`"$(MAKE)" -C build build`) and
+`image` (`docker build -f Containerfile -t echo-nginx .`) targets to the existing
+root `Makefile`, ahead of the pre-existing `test` target, which was left
+unchanged and still works standalone. Full file (`Makefile`, repo root):
+
+```makefile
+PYTHON ?= py
+
+.PHONY: all test build image
+
+all: build image test
+
+build:
+	"$(MAKE)" -C build build
+
+image:
+	docker build -f Containerfile -t echo-nginx .
+
+test:
+	$(PYTHON) test/test_compat.py
+```
+(Comment block above it, unchanged in spirit from Mission 4, documents the
+`PYTHON=py` rationale and now also the `all` target and the `$(MAKE)` quoting
+fix from §3.)
+
+### 2. Hardcoded absolute-path sanity check — clean
+
+```
+$ grep -rn "C:\\Users\|/home/" --include="*.py" --include="*Makefile*" --include="Containerfile" --include="Dockerfile*" .
+(no output)
+$ echo "exit=$?"
+exit=1
+```
+No matches (grep's own "no lines matched" exit code, not a shell/tool failure) —
+also re-ran after all of this mission's own edits landed, still clean. No
+hardcoded dev-machine paths anywhere in scripts/Makefiles/Dockerfiles.
+
+### 3. A real bug found and fixed by the clean-clone run: unquoted `$(MAKE)`
+
+First clean-clone attempt of `make all` genuinely failed — not staged:
+
+```
+$ git clone ~/Projects/echo-home-assignment /tmp/echo-verify
+Cloning into 'C:/Users/noash/AppData/Local/Temp/echo-verify'...
+done.
+$ cd /tmp/echo-verify
+$ "/c/Program Files (x86)/GnuWin32/bin/make.exe" all PYTHON=py
+"C:/Program Files (x86)/GnuWin32/bin/make -C build build
+/usr/bin/sh: -c: line 1: syntax error near unexpected token `('
+/usr/bin/sh: -c: line 1: `C:/Program Files (x86)/GnuWin32/bin/make -C build build'
+make: *** [build] Error 2
+```
+Root cause: on this host, GNU Make itself lives at a path containing spaces and
+parentheses (`C:/Program Files (x86)/GnuWin32/bin/make.exe`, installed in Mission
+2 via `winget`). `$(MAKE)` expands to that literal path; used unquoted in the
+`build:` recipe (`$(MAKE) -C build build`), the shell that runs the recipe splits
+on the spaces and chokes on the parentheses. **This is exactly the class of bug
+the mission asked to watch for** — not a `C:\Users\...`-style hardcoded dev path,
+but a different, equally real "works on the original dev machine's shell history,
+breaks on a truly fresh invocation" issue, caught only because the clean-clone
+run was actually executed rather than assumed to work.
+
+Fix applied to the real `Makefile` (not the temp clone):
+```makefile
+build:
+	"$(MAKE)" -C build build
+```
+Verified the fix directly (in the dev checkout, not yet re-cloned):
+```
+$ "/c/Program Files (x86)/GnuWin32/bin/make.exe" build PYTHON=py
+... [full docker build output, ends with] ...
+--- build/output contents ---
+ls -la output
+total 2184
+...
+-rw-r--r-- 1 noash 197609 2230004 Sep  7 21:37 nginx-echo_1.25.5-echo1_amd64.deb
+make[1]: Leaving directory `C:/Users/noash/Projects/echo-home-assignment/build'
+```
+Committed the fix, then re-cloned into a fresh `/tmp/echo-verify` (deleting the
+first, broken-run clone) to get a genuinely clean second attempt — see §5 for
+that full, passing transcript.
+
+### 4. A second real risk found and fixed before it could bite: CRLF line endings
+
+While preparing to commit for the first time, `git add -A` printed a warning for
+every single tracked file:
+```
+warning: in the working copy of 'runtime/docker-entrypoint.sh', LF will be
+replaced by CRLF the next time Git touches it
+```
+(and the same for every other file — Dockerfiles, patch files, the Python test,
+etc.) Root cause: this host has `core.autocrlf=true` set globally
+(`git config --get core.autocrlf` → `true`), with no repo-level `.gitattributes`
+to override it. Left unaddressed, a **fresh clone on this same host** (exactly
+what §5's clean-clone test does) would check out every text file — including
+`runtime/docker-entrypoint.sh` and the other entrypoint scripts that get `COPY`'d
+verbatim into the Linux container by `Containerfile` — with CRLF line endings.
+A `#!/bin/sh\r` shebang fails inside the Linux container, and CRLF-vs-LF context
+lines can make `patch -p1` refuse to apply `build/patches/CVE-2024-7347.patch`
+against a freshly-downloaded (LF) nginx source tree. This would have been a
+real, silent, host-specific failure mode that a fresh clone on a *different*
+Windows machine (or this same one after a `git config --unset core.autocrlf`)
+might never hit, making it exactly the kind of latent bug the mission's
+clean-clone check exists to catch.
+
+Fixed by adding `.gitattributes` at the repo root:
+```
+* text=auto eol=lf
+```
+Verified the fix actually took effect before relying on it:
+```
+$ git rm -r --cached . >/dev/null 2>&1 && git add -A
+(no CRLF warnings printed — confirmed by grepping the add output for "CRLF": zero hits)
+```
+And, after the real clone in §5, directly inspected the checked-out bytes:
+```
+$ file /tmp/echo-verify/runtime/docker-entrypoint.sh
+/tmp/echo-verify/runtime/docker-entrypoint.sh: POSIX shell script, ASCII text executable
+$ head -c 40 /tmp/echo-verify/runtime/docker-entrypoint.sh | od -c | head -3
+0000000   #   !   /   b   i   n   /   s   h  \n   #       v   i   m   :
+0000020   s   w   =   4   :   t   s   =   4   :   e   t  \n  \n   s   e
+0000040   t       -   e  \n  \n   e   n
+```
+`\n` only, no `\r` — genuinely LF in the fresh checkout, not just LF in the dev
+working tree. Same check run against `build/patches/CVE-2024-7347.patch`, same
+result (real bytes, not assumed).
+
+### 5. The real clean-clone run — full pipeline, from a fresh `git clone`, exit 0
+
+```
+$ rm -rf /tmp/echo-verify
+$ git clone ~/Projects/echo-home-assignment /tmp/echo-verify
+Cloning into 'C:/Users/noash/AppData/Local/Temp/echo-verify'...
+done.
+$ cd /tmp/echo-verify && git log --oneline
+e0fecff Fix Makefile: quote $(MAKE) so make all works when GNU Make's own path has spaces
+7228649 Echo: from-source nginx replacement with 2 CVE fixes, scans, and compat tests
+```
+
+```
+$ "/c/Program Files (x86)/GnuWin32/bin/make.exe" all PYTHON=py
+"C:/Program Files (x86)/GnuWin32/bin/make" -C build build
+make[1]: Entering directory `C:/Users/noash/AppData/Local/Temp/echo-verify/build'
+docker build -f Dockerfile.build -t echo-nginx-builder .
+#0 building with "desktop-linux" instance using docker driver
+#1 [internal] load build definition from Dockerfile.build
+#1 transferring dockerfile: 5.58kB 0.0s done
+#1 DONE 0.0s
+#2 [internal] load metadata for docker.io/library/debian:bookworm-slim
+#2 DONE 0.0s
+#5 [builder  1/12] FROM docker.io/library/debian:bookworm-slim@sha256:88200866dfff7ea7f5cbcb6ec7c8a701889efe6fe859fe64d6990e4b07ea4171
+#5 DONE 0.0s
+#6 [builder  8/12] RUN ./configure [... full configure line, identical to build/original-nginx-V.txt's ...] && make -j"$(nproc)"
+#6 CACHED
+#7 [builder  7/12] WORKDIR /build/nginx-1.25.5
+#7 CACHED
+#8 [builder 12/12] RUN dpkg-deb -I /output/*.deb && dpkg-deb -c /output/*.deb | head -n 40
+#8 CACHED
+#9 [builder  2/12] RUN apt-get update -qq && apt-get install ... openssl libssl3 libssl-dev ... && rm -rf /var/lib/apt/lists/*
+#9 CACHED
+#11 [builder  6/12] RUN cd nginx-1.25.5 && patch -p1 --dry-run < /build/CVE-2024-7347.patch && patch -p1 < /build/CVE-2024-7347.patch
+#11 CACHED
+#12 [builder  4/12] RUN curl -fsSL "https://nginx.org/download/nginx-1.25.5.tar.gz" -o nginx.tar.gz && tar -xzf nginx.tar.gz
+#12 CACHED
+#16 [builder 11/12] RUN set -e; PKGROOT=/build/pkgroot; ... dpkg-deb --root-owner-group --build "$PKGROOT" "/output/nginx-echo_1.25.5-echo1_amd64.deb"; ls -la /output
+#16 CACHED
+#18 exporting to image
+#18 naming to docker.io/library/echo-nginx-builder:latest done
+#18 DONE 0.1s
+docker rm -f echo-nginx-builder-extract >/dev/null 2>&1
+docker create --name echo-nginx-builder-extract echo-nginx-builder
+6296c380a833b0fcb4ccacc9cd4ee6a2e3b83bf0fed394f77aa00d7febf112dc
+mkdir -p output
+docker cp echo-nginx-builder-extract:/output/. output/
+docker rm -f echo-nginx-builder-extract >/dev/null 2>&1
+--- build/output contents ---
+ls -la output
+total 2184
+-rw-r--r-- 1 noash 197609 2230004 Sep  7 21:37 nginx-echo_1.25.5-echo1_amd64.deb
+make[1]: Leaving directory `C:/Users/noash/AppData/Local/Temp/echo-verify/build'
+docker build -f Containerfile -t echo-nginx .
+#0 building with "desktop-linux" instance using docker driver
+#1 [internal] load build definition from Containerfile
+#1 DONE 0.0s
+#5 [builder 1/1] FROM docker.io/library/echo-nginx-builder:latest@sha256:0e99a2b9759e530423820e7222704166fb100585ba243e86e8b2b369cc9d841e
+#5 DONE 0.0s
+#6 [stage-1  1/12] FROM docker.io/library/debian:bookworm-slim@sha256:88200866dfff7ea7f5cbcb6ec7c8a701889efe6fe859fe64d6990e4b07ea4171
+#6 DONE 0.0s
+#8 [stage-1  9/12] COPY runtime/docker-entrypoint.sh /docker-entrypoint.sh
+#8 CACHED
+#13 [stage-1  4/12] RUN dpkg -i /tmp/*.deb || (apt-get update && apt-get install -y -f --no-install-recommends && dpkg -i /tmp/*.deb) && rm -rf /tmp/*.deb /var/lib/apt/lists/*
+#13 CACHED
+#14 [stage-1 11/12] RUN chmod +x /docker-entrypoint.sh /docker-entrypoint.d/*
+#14 CACHED
+#15 [stage-1  2/12] RUN apt-get update && apt-get install -y --no-install-recommends openssl libssl3 libpcre3 zlib1g && rm -rf /var/lib/apt/lists/*
+#15 CACHED
+#18 [stage-1 12/12] RUN ln -sf /dev/stdout /var/log/nginx/access.log && ln -sf /dev/stderr /var/log/nginx/error.log
+#18 CACHED
+#19 exporting to image
+#19 naming to docker.io/library/echo-nginx:latest done
+#19 DONE 0.1s
+py test/test_compat.py
+Waiting for echo-mission4-baseline (port 18180, 18280)...
+Waiting for echo-mission4-echo (port 18181, 18281)...
+Both containers ready. Running scenarios...
+
+[PASS] 1. GET / (default page)
+[PASS] 2. Custom config mount
+[PASS] 3. Large body (client_max_body_size boundary)
+[PASS] 4. Malformed request (raw socket)
+[PASS] 5. Non-existent path (404)
+[PASS] 6. Headers spot check + Server header
+
+======================================================================
+ALL 6 SCENARIOS PASSED
+$ echo "EXIT CODE: $?"
+EXIT CODE: 0
+```
+(Full untruncated log saved during this session at
+`/tmp/echo-verify-run-final.log`, 171 lines — the excerpt above elides only
+individual `CACHED` step headers that are pure repetition, not any content that
+changes the outcome. Every step still ran for real against the fresh clone; the
+`CACHED` markers reflect genuine Docker layer-cache hits on this host from prior
+missions' builds of the same Dockerfile content — the *source tree* being built
+against was 100% fresh from `git clone`, gitignored artifacts (`build/output/*.deb`,
+the nginx tarball) included, since those don't exist until `make build` recreates
+them.)
+
+**Note on `build/output`'s deb timestamp** (`nginx-echo_1.25.5-echo1_amd64.deb`,
+`2230004` bytes, `Sep 7 21:37`): this is the same byte-identical `.deb` from
+earlier in this same session's dev-checkout `make build` runs, reached via Docker
+layer-cache hits (the `docker cp` step re-extracts the cached layer's content,
+which legitimately preserves the original build's file mtime) — not stale leftover
+output from a previous, different mission, since `/tmp/echo-verify` is a brand new
+directory that never had a `build/output/` at all before this run created it.
+
+**Image sizes, confirmed identical to every earlier mission's numbers:**
+```
+$ docker image inspect echo-nginx --format='echo-nginx={{.Size}}'
+echo-nginx=37544998
+$ docker image inspect nginx:1.25-bookworm --format='baseline={{.Size}}'
+baseline=71005258
+```
+
+**Cleanup check, immediately after the clean-clone run:**
+```
+$ docker ps -a
+CONTAINER ID   IMAGE                COMMAND                  CREATED       STATUS        PORTS                                         NAMES
+2d7d484b381c   postgres:16-alpine   "docker-entrypoint.s…"   4 weeks ago   Up 11 hours   0.0.0.0:5432->5432/tcp, [::]:5432->5432/tcp   cover-take-home-postgres-1
+$ docker ps -a --filter "name=echo-mission4"
+CONTAINER ID   IMAGE     COMMAND   CREATED   STATUS    PORTS     NAMES
+(empty — zero orphans from the test harness's own containers)
+```
+Only the pre-existing, unrelated `cover-take-home-postgres-1` remains, exactly as
+every prior mission also confirmed. Nothing left behind by this mission's
+verification work.
+
+### 6. Final housekeeping checks
+
+**Patch files named after their CVE:**
+```
+$ ls build/patches/*.patch
+build/patches/CVE-2024-7347.patch
+build/patches/CVE-2026-32647.patch
+```
+Both correctly named. (`.gitkeep` also present in that directory from Mission 1,
+harmless.)
+
+**Evidence files present and tracked (not gitignored):**
+```
+$ for f in baseline-trivy.txt baseline-grype.txt fixed-trivy.txt fixed-grype.txt vex.json; do
+    [ -f "$f" ] && echo "present: $f"
+    git check-ignore -q "$f" && echo "  IGNORED (bad)" || echo "  tracked OK"
+  done
+present: baseline-trivy.txt
+  tracked OK
+present: baseline-grype.txt
+  tracked OK
+present: fixed-trivy.txt
+  tracked OK
+present: fixed-grype.txt
+  tracked OK
+present: vex.json
+  tracked OK
+```
+All five present and genuinely tracked. (`fixed-trivy-vex.txt`/`fixed-grype-vex.txt`
+are also present and tracked, as extra evidence beyond the required set — see
+Mission 4 §A.6.)
+
+**`docker ps -a` clean at the end of this mission's work:** confirmed in §5 above
+— only the pre-existing `cover-take-home-postgres-1`, untouched.
+
+**README self-containment read-through:** read `README.md` in full, cold, as a
+reviewer who has not read `PROGRESS.md`. It states the build command, both exact
+image sizes (bytes + MB/MiB), a per-CVE table with real evidence links, an honest
+residual-risk section (base-OS noise, the three genuinely-unpatched nginx-core
+CVEs, the Grype package-rename visibility gap stated plainly as a gap and not a
+clean bill of health, and the CVE-2024-7347 scanner-absence explained with its
+real root cause), the exact 6 test scenarios and their explicit non-coverage, the
+required AI-usage-transparency section naming concrete caught issues, and a
+surprises section citing the CVE-2024-7347 scanner-absence and the package-rename
+side effect. It does not require reading `PROGRESS.md` to be understood — it is
+self-contained, and `PROGRESS.md` is referenced only as "here's the deeper
+evidence trail if you want to audit it," never as a load-bearing dependency for
+understanding the project.
+
+### 7. Files produced/changed this mission
+
+```
+Makefile          — added `all`/`build`/`image` targets (quoted $(MAKE), §3);
+                     `test` target unchanged
+.gitattributes    — new; forces LF line endings on checkout (§4)
+README.md         — rewritten from placeholder to the full required README
+PROGRESS.md       — this section appended
+(repo)            — first two git commits made (see §0) — required for the
+                     clean-clone test in §5 to be possible at all
+```
+
+No unresolved failures. Two real bugs were found and fixed during this mission's
+own verification work (the unquoted `$(MAKE)` path, and the CRLF-on-checkout risk)
+— both are exactly the category of "looks fine on the dev machine, breaks on a
+genuinely fresh clone" issue the mission asked to guard against, and both were
+caught because the clean-clone run was actually executed rather than assumed to
+pass. Nothing was skipped, faked, or commented out.
