@@ -17,15 +17,15 @@ CONTAINER   := echo-nginx-builder-extract
 
 build:
 	docker build -f Dockerfile.build -t $(IMAGE) .
-	-docker rm -f $(CONTAINER) >/dev/null 2>&1
+	-docker rm -f $(CONTAINER)
 	docker create --name $(CONTAINER) $(IMAGE)
 	mkdir -p $(OUTPUT_DIR)
 	docker cp $(CONTAINER):/output/. $(OUTPUT_DIR)/
-	docker rm -f $(CONTAINER) >/dev/null 2>&1
+	-docker rm -f $(CONTAINER)
 	@echo "--- build/output contents ---"
 	ls -la $(OUTPUT_DIR)
 
 clean:
-	-docker rm -f $(CONTAINER) >/dev/null 2>&1
-	-docker rmi -f $(IMAGE) >/dev/null 2>&1
+	-docker rm -f $(CONTAINER)
+	-docker rmi -f $(IMAGE)
 	rm -rf $(OUTPUT_DIR)
