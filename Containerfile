@@ -54,6 +54,9 @@ COPY runtime/nginx.conf /etc/nginx/nginx.conf
 RUN mkdir -p /etc/nginx/conf.d
 COPY runtime/default.conf /etc/nginx/conf.d/default.conf
 COPY runtime/usr-share-nginx-html/ /usr/share/nginx/html/
+# Preserve the original image's welcome-page metadata so nginx emits the same
+# Last-Modified and ETag headers as nginx:1.25-bookworm.
+RUN touch -d '2024-04-16 14:29:59 UTC' /usr/share/nginx/html/index.html
 
 COPY runtime/docker-entrypoint.sh /docker-entrypoint.sh
 COPY runtime/docker-entrypoint.d/ /docker-entrypoint.d/
