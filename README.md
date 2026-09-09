@@ -5,12 +5,11 @@ real CVEs (one OpenSSL dependency bump, two nginx-core source backports), ships 
 vulnerability-scan evidence and a VEX document, and includes an automated
 compatibility test suite that runs the original and the replacement side by side.
 
-This project was built across five sequential, autonomous Claude Code missions. See
-the **AI-tool usage transparency** section below for exactly what that means and
-where it needed correction. `PROGRESS.md` in this repo is the full mission-by-mission
-handoff log (command transcripts, dead ends, verification notes); this README is the
-standalone summary — you shouldn't need to read `PROGRESS.md` to understand or use
-this project, only to audit how it was built.
+This project was built across several sequential, autonomous Claude Code missions.
+See the **AI-tool usage transparency** section below for exactly what that means and
+where it needed correction. This README is a standalone summary — the full
+mission-by-mission handoff log (command transcripts, dead ends, verification notes)
+was kept as a local working document and isn't part of this repo.
 
 ---
 
@@ -50,9 +49,9 @@ and `make build` regenerates them from source every time. That's expected, not a
 No `pip install` is required anywhere in this pipeline; the test harness is
 stdlib-only Python (`http.client`, `socket`, `subprocess`).
 
-A real, full clean-clone run of `make all` — cloned into a fresh temporary directory,
-not the development checkout — is pasted verbatim in `PROGRESS.md`'s final "Mission
-5" section as proof this actually reproduces end to end.
+This has been verified with a real, full clean-clone run of `make all` — cloned into
+a fresh temporary directory, not the development checkout — confirming it actually
+reproduces end to end.
 
 ---
 
@@ -91,11 +90,10 @@ container *behavior* — `User`, `WorkingDir`, `Entrypoint`, `Cmd`, `ExposedPort
 | **CVE-2024-7347** | Low (per nginx.org's own advisory — chosen for being the cleanest available backport, not the highest severity) | **Backport** — the official nginx.org standalone patch applied with `patch -p1` to the nginx 1.25.5 source tree in `build/Dockerfile.build`, before `./configure && make`. Widens a counter from `uint32_t` to `uint64_t` in `ngx_http_mp4_crop_stsc_data()` (`src/http/modules/ngx_http_mp4_module.c`) to prevent a buffer over-read from unordered `stsc` atom chunks in a crafted mp4 file, and adds an explicit `next_chunk < chunk` rejection — the same fix nginx.org shipped upstream in 1.27.1/1.26.2 | Official patch: [`nginx.org/download/patch.2024.mp4.txt`](https://nginx.org/download/patch.2024.mp4.txt) (mirrored at `build/patches/CVE-2024-7347.patch`); advisory background: [nginx.org security advisories](https://nginx.org/en/security_advisories.html) / [nginx.org CHANGES](https://nginx.org/en/CHANGES); GHSA: [`GHSA-3r23-64c4-mj87`](https://github.com/advisories/GHSA-3r23-64c4-mj87) |
 | **CVE-2026-60005** | High | **Backport** — upstream nginx commit `b99f804ad38a60ceb07bc429598d5b2c4e70e336` adds `r->ncaptures = 0` when regex captures are reallocated, preventing stale unnamed-capture bounds from exposing uninitialized memory through slice/cache subrequests. It applies to nginx 1.25.5 with a context offset and is applied before compilation | [F5 advisory K000162100](https://my.f5.com/manage/s/article/K000162100); upstream fix commit [`b99f804`](https://github.com/nginx/nginx/commit/b99f804ad38a60ceb07bc429598d5b2c4e70e336); patch: `build/patches/CVE-2026-60005.patch` |
 
-All three fixes are recorded, with full command-level verification (patch dry-run/apply
+All three fixes were verified at the command level (patch dry-run/apply
 transcripts, `nginx -V` diffs, `ldd`/`dpkg -l` proof that the fixed library is what
-actually links into the shipped binary), in `PROGRESS.md`'s Mission 2 and Mission 3
-sections. The Mission 6 research also fetched and dry-run-tested the candidate
-areas. CVE-2026-60005 was selected because its real upstream fix is a one-line
+actually links into the shipped binary) before being recorded here. The candidate
+areas were fetched and dry-run-tested. CVE-2026-60005 was selected because its real upstream fix is a one-line
 invariant repair with a clean dry-run against 1.25.5. CVE-2026-42533 was rejected
 because no equally isolated map/regex fix commit could be identified in the public
 mirror and the likely backport is higher-risk; CVE-2026-56434 was rejected because
@@ -106,8 +104,7 @@ due-diligence evidence.
 The GHSA ID above was double-checked deliberately: an earlier draft cited a
 different, invented-looking GHSA ID that turned out not to exist (a live fetch of its
 advisory URL 404'd). `GHSA-3r23-64c4-mj87` is the one actually confirmed to resolve
-and correspond to CVE-2024-7347 — see `vex.json` and `PROGRESS.md`'s Mission 4
-section for that correction in full.
+and correspond to CVE-2024-7347 — see `vex.json` for the corrected reference.
 
 ---
 
@@ -151,8 +148,8 @@ scanner-visible `nginx` Debian package identity, a fresh no-VEX scan of the rebu
 image reported the CVE in both tools. Trivy's targeted output was `Total: 246` and
 included `CVE-2026-60005`; Grype reported `nginx 1.25.5-echo1 ... CVE-2026-60005`.
 The same image with `--vex vex.json` contained no matching CVE line in either scan;
-Trivy's targeted total became 245. The exact commands and output are recorded in
-`PROGRESS.md` Mission 6.
+Trivy's targeted total became 245. The raw before/after transcripts are committed at
+the repo root (`fixed-cve60005-*.txt`, `audit-cve60005-*.txt`).
 
 ---
 
@@ -184,8 +181,8 @@ image's actual content changes, silently breaking VEX suppression evidence over 
 This only guarantees reproducibility for repeated builds *within one checkout*,
 though — two independent `git clone`s of this repo still produce different image
 digests even with the flags (likely each clone's checkout mtimes getting baked into
-the resulting layers), confirmed by comparing two fresh clones' builds in
-`PROGRESS.md` Mission 8. In practice this residual gap doesn't break VEX
+the resulting layers), confirmed by comparing two fresh clones' builds directly.
+In practice this residual gap doesn't break VEX
 suppression: both Trivy and Grype key `--vex` product matching primarily off the
 Debian package purl, not the OCI digest, and suppression was verified to still work
 against a clone whose actual digest didn't match the one pinned in `vex.json`. The
@@ -200,7 +197,7 @@ binary, HTTP behavior, or runtime image identity.
 
 **CVE-2024-7347's own visibility, separately:** as noted above, this CVE was never
 flagged by either scanner against nginx in *either* image, before or after the fix.
-Root cause (verified, not assumed — see `PROGRESS.md` Mission 4, section A.3): Trivy's
+Root cause (verified, not assumed): Trivy's
 Debian OS-package database has zero entries for the `nginx` package at all (it never
 had this CVE to lose), and Grype's NVD/CPE dataset for nginx 1.25.5 simply never
 included this particular CVE among the 6 it does track. `vex.json` documents the true,
@@ -265,8 +262,7 @@ containers left behind afterward (`docker ps -a` clean on both runs). The suite 
 also deliberately run against two broken variants (never the committed script) to
 confirm it actually fails loudly with a specific message and still cleans up its
 containers on both an assertion failure and an infrastructure-level failure raised
-before any scenario runs — see `PROGRESS.md` Mission 4, section B.5, for both
-transcripts.
+before any scenario runs.
 
 **What "compatibility verified" does *not* mean here** — explicitly out of scope for
 this suite:
@@ -290,7 +286,7 @@ protocol- or module-level regression suite.
 This entire project — all 5 missions, including the one that wrote this README —
 was built by **Claude Code** (Anthropic's AI coding agent), run as a sequence of
 autonomous background missions. Each mission started with no memory of the previous
-one and picked up entirely from a written handoff (`PROGRESS.md`), which each
+one and picked up entirely from a written handoff document, which each
 mission was also responsible for extending before finishing. An orchestrator session
 sat above all five missions and **independently re-verified each mission's key
 claims against real command output**, rather than trusting each mission's own
@@ -380,5 +376,4 @@ baseline-trivy.txt, baseline-grype.txt   — pre-fix scans of nginx:1.25-bookwor
 fixed-trivy.txt, fixed-grype.txt         — post-fix scans of echo-nginx
 fixed-trivy-vex.txt, fixed-grype-vex.txt — post-fix scans with vex.json applied
 vex.json                          — OpenVEX document for CVE-2024-7347
-PROGRESS.md                       — full mission-by-mission build log and evidence trail
 ```
