@@ -2414,3 +2414,64 @@ ALL 6 SCENARIOS PASSED
 
 This confirms the committed build path works from a genuinely fresh checkout and
 does not depend on the original directory's generated `.deb` or image tags.
+
+## Mission 8: independent re-verification and digest-reproducibility fix
+
+A fresh clone of `claude/ai-reasoning-validation-khhcvk` was made into a new sibling
+directory (`echo-home-assignment-audit1`), confirming HEAD at commit `833206f`
+(descends from `5592419`), to independently re-verify Mission 7's claimed fix
+rather than trust its own summary.
+
+**Part 1 re-check: both originally suspected problems were already fixed, for
+real.** After clearing local `echo-nginx`/`echo-nginx-builder` images and pruning
+the builder cache, a clean `make all` passed all 6 scenarios with no manual
+intervention. `vex.json`'s two statements already shared the same current package
+purl (`pkg:deb/debian/nginx@1.25.5-echo1...`, not the old `nginx-echo` name) and the
+same OCI digest — Mission 7's fix. `build/pkg/control.template` already declared
+`Package: nginx`, and `build/Dockerfile.build` already emitted
+`nginx_${PKG_VERSION}_amd64.deb`, matching. Neither suspected issue was present any
+longer.
+
+**New finding: the OCI digest itself is not reproducible across rebuilds,
+independent of the rename.** A genuinely fresh `make all` build produced image
+digest `sha256:2e586ec1...`, not the `sha256:adc89be8...` recorded in `vex.json`.
+Root-caused (not assumed): building the identical Containerfile twice back-to-back
+with `docker build`'s default flags produced two different digests; with
+`--provenance=false --sbom=false` added, two back-to-back builds produced the
+identical digest (`sha256:118ecfeec629...`). Buildx's default provenance/SBOM
+attestations embed a build timestamp, which changes the image manifest-list digest
+on every rebuild even when no layer's content changed — this is why the digest kept
+needing to be re-pinned across Missions 6 and 7, not specifically because of the
+package rename. Fixed by adding `--provenance=false --sbom=false` to `make image`'s
+`docker build` call; both `vex.json` OCI purls were updated to the resulting stable
+digest `sha256:118ecfeec629bee8a109b0c64b90bfc98ccf743b729f2142811e3f6647dbb610`.
+
+**Broadened audit (Part 2):** a case-insensitive, whole-repo search for
+`nginx-echo` found matches only in `README.md` and `PROGRESS.md`, both historical/
+explanatory (Mission 6's discovery narrative and the AI-usage-transparency
+section), not current-state claims. The CPE identifier
+(`cpe:2.3:a:nginx:nginx:1.25.5:*:*:*:*:*:*:*`) needed no change — package-name-
+agnostic, as already documented. The `.deb`'s `Depends:` line and `postinst` contain
+no hard-coded old package identity. No other stale references found.
+
+**Re-verification, in this fresh clone, with the digest fix applied:**
+```
+$ make build && make image
+(exit 0, both steps)
+$ docker inspect echo-nginx --format='{{.Id}}'
+sha256:118ecfeec629bee8a109b0c64b90bfc98ccf743b729f2142811e3f6647dbb610
+$ docker run --rm --entrypoint bash echo-nginx -c "dpkg -l | grep -i nginx"
+ii  nginx   1.25.5-echo1   amd64   nginx 1.25.5 (Echo build) with nginx security backports
+```
+No-VEX scans of this exact image showed `CVE-2026-60005` present in both Trivy and
+Grype (1 hit each, `grep -c`); the same image rescanned with `--vex vex.json`
+(updated to the new digest) showed zero hits in both — VEX suppression is intact
+after the fix. `make test` printed all 6 scenarios as `PASS`.
+
+**Second fresh clone (Part 4.4):** a second, independent clone into a new sibling
+directory (`echo-home-assignment-audit2`), with local Docker image/builder state
+cleared beforehand, ran `make all` end to end with the committed fix already in
+place. Result and exact digest recorded in the commit that lands this section (see
+commit log for the pushed transcript); the key claim under test — that the
+digest-reproducibility fix, not just the rename fix, survives a from-scratch
+clone — was confirmed there, not assumed here.

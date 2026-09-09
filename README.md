@@ -172,6 +172,16 @@ Trivy's targeted total became 245. The exact commands and output are recorded in
   mission could justify. `CVE-2026-60005` is no longer in this list: its upstream
   fix is applied and its VEX suppression is demonstrated above.
 
+**OCI image digests are pinned to a reproducible build, deliberately:** `make image`
+passes `--provenance=false --sbom=false` to `docker build`. Without those flags,
+buildx's default provenance/SBOM attestations embed a build timestamp, which changes
+the image's manifest-list digest (`docker inspect --format='{{.Id}}'`) on every
+rebuild even when no layer's content changed — verified directly: two back-to-back
+builds of the identical Dockerfile/.deb produced different digests without the flags,
+and the identical digest with them. `vex.json` pins this digest per CVE statement, so
+without the flags the pin would go stale on every `make image`, not just when the
+image's actual content changes, silently breaking VEX suppression evidence over time.
+
 **Scanner identity is intentional:** Mission 6 changed the Debian metadata package
 name from `nginx-echo` to `nginx` while retaining the `echo-nginx` image name and
 `1.25.5-echo1` version. This preserves Grype/Trivy's nginx visibility, which is
