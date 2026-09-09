@@ -40,8 +40,15 @@ all: build image test
 build:
 	"$(MAKE)" -C build build
 
+# --provenance=false --sbom=false: buildx's default provenance/SBOM attestations
+# embed a build timestamp, which changes the image's manifest-list digest
+# (`docker inspect --format='{{.Id}}'`) on every rebuild even when no layer's
+# content changed. vex.json pins that digest per CVE statement, so without
+# these flags the pin goes stale on every `make image`, not just on real
+# content changes. Confirmed by building twice back-to-back: with the flags,
+# both builds produced the identical digest; without them, they didn't.
 image:
-	docker build -f Containerfile -t echo-nginx .
+	docker build -f Containerfile -t echo-nginx --provenance=false --sbom=false .
 
 test:
 	$(PYTHON) test/test_compat.py
