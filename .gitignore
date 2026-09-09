@@ -3,6 +3,9 @@
 # Internal working log, not meant to be shared/tracked
 PROGRESS.md
 
+# Personal Claude Code permission overrides, not team policy
+.claude/settings.local.json
+
 # Downloaded nginx source tarball(s)
 build/nginx-*.tar.gz
 build/nginx-*.tar.gz.asc
