@@ -15,15 +15,15 @@
       "timestamp": "2026-09-07T00:00:00Z",
       "products": [
         {
-          "@id": "pkg:deb/debian/nginx-echo@1.25.5-echo1?arch=amd64&distro=debian-12.15",
+          "@id": "pkg:deb/debian/nginx@1.25.5-echo1?arch=amd64&distro=debian-12.15",
           "identifiers": {
-            "purl": "pkg:deb/debian/nginx-echo@1.25.5-echo1?arch=amd64&distro=debian-12.15"
+            "purl": "pkg:deb/debian/nginx@1.25.5-echo1?arch=amd64&distro=debian-12.15"
           }
         },
         {
-          "@id": "pkg:oci/echo-nginx@sha256%3A8343b21f39127eb1cee93fc075629f40fc80a30aa405de392c72bba4a85e7abb",
+          "@id": "pkg:oci/echo-nginx@sha256%3A594068698b9618000b9783b0ebfc4c81ca1d6ca78fe5e8d67e69245e0d0ca7ca",
           "identifiers": {
-            "purl": "pkg:oci/echo-nginx@sha256%3A8343b21f39127eb1cee93fc075629f40fc80a30aa405de392c72bba4a85e7abb"
+            "purl": "pkg:oci/echo-nginx@sha256%3A594068698b9618000b9783b0ebfc4c81ca1d6ca78fe5e8d67e69245e0d0ca7ca"
           }
         },
         {
@@ -52,9 +52,9 @@
           }
         },
         {
-          "@id": "pkg:oci/echo-nginx@sha256%3A3d4535e8296d47f9de2a8e85acd25deffe4ae6b7843eebaef1e3428f52cc0f22",
+          "@id": "pkg:oci/echo-nginx@sha256%3A594068698b9618000b9783b0ebfc4c81ca1d6ca78fe5e8d67e69245e0d0ca7ca",
           "identifiers": {
-            "purl": "pkg:oci/echo-nginx@sha256%3A3d4535e8296d47f9de2a8e85acd25deffe4ae6b7843eebaef1e3428f52cc0f22"
+            "purl": "pkg:oci/echo-nginx@sha256%3A594068698b9618000b9783b0ebfc4c81ca1d6ca78fe5e8d67e69245e0d0ca7ca"
           }
         }
       ],

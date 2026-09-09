@@ -34,7 +34,7 @@ This chains three steps, each usable on its own:
 ```
 make build   # cd build && make build  — compiles nginx 1.25.5 from source with both
              # CVE fixes applied, inside a debian:bookworm-slim builder container, and
-             # packages it as build/output/nginx-echo_1.25.5-echo1_amd64.deb
+             # packages it as build/output/nginx_1.25.5-echo1_amd64.deb
 make image   # docker build -f Containerfile -t echo-nginx .  — assembles the final
              # runtime image from that .deb plus the Docker-flavored entrypoint/config
              # extracted from the original image (see runtime/)

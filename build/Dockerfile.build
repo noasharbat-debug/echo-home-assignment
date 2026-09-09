@@ -98,7 +98,7 @@ RUN set -e; \
     cp /build/postinst "$PKGROOT/DEBIAN/postinst"; \
     chmod 0755 "$PKGROOT/DEBIAN/postinst"; \
     mkdir -p /output; \
-    dpkg-deb --root-owner-group --build "$PKGROOT" "/output/nginx-echo_${PKG_VERSION}_amd64.deb"; \
+    dpkg-deb --root-owner-group --build "$PKGROOT" "/output/nginx_${PKG_VERSION}_amd64.deb"; \
     ls -la /output
 
 # --- Sanity: dpkg-deb can describe/list what it built -------------------
