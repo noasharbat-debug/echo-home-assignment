@@ -1,5 +1,8 @@
 # Build artifacts only — scan reports (.txt/.json) and patches must stay tracked.
 
+# Internal working log, not meant to be shared/tracked
+PROGRESS.md
+
 # Downloaded nginx source tarball(s)
 build/nginx-*.tar.gz
 build/nginx-*.tar.gz.asc
