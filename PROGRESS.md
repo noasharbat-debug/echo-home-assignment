@@ -2390,6 +2390,8 @@ Grype: no CVE-2026-60005 line
 
 `make test` then printed all six compatibility scenarios as `PASS`.
 
+The final fresh-clone image identity was `sha256:adc89be809e3827f988b1ca8aba071e8291d660c464d5fee357475f9f169b24e`, with installed package `nginx 1.25.5-echo1` and sole artifact `nginx_1.25.5-echo1_amd64.deb`; both VEX statements were updated to this final digest.
+
 ### 4. Fresh-clone reproducibility
 
 Commit `dca572590de5372dc5f35dff79a38615aca2b0a0` was cloned into a new sibling

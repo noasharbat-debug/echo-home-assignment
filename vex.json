@@ -21,9 +21,9 @@
           }
         },
         {
-          "@id": "pkg:oci/echo-nginx@sha256%3A594068698b9618000b9783b0ebfc4c81ca1d6ca78fe5e8d67e69245e0d0ca7ca",
+          "@id": "pkg:oci/echo-nginx@sha256%3Aadc89be809e3827f988b1ca8aba071e8291d660c464d5fee357475f9f169b24e",
           "identifiers": {
-            "purl": "pkg:oci/echo-nginx@sha256%3A594068698b9618000b9783b0ebfc4c81ca1d6ca78fe5e8d67e69245e0d0ca7ca"
+            "purl": "pkg:oci/echo-nginx@sha256%3Aadc89be809e3827f988b1ca8aba071e8291d660c464d5fee357475f9f169b24e"
           }
         },
         {
@@ -52,9 +52,9 @@
           }
         },
         {
-          "@id": "pkg:oci/echo-nginx@sha256%3A594068698b9618000b9783b0ebfc4c81ca1d6ca78fe5e8d67e69245e0d0ca7ca",
+          "@id": "pkg:oci/echo-nginx@sha256%3Aadc89be809e3827f988b1ca8aba071e8291d660c464d5fee357475f9f169b24e",
           "identifiers": {
-            "purl": "pkg:oci/echo-nginx@sha256%3A594068698b9618000b9783b0ebfc4c81ca1d6ca78fe5e8d67e69245e0d0ca7ca"
+            "purl": "pkg:oci/echo-nginx@sha256%3Aadc89be809e3827f988b1ca8aba071e8291d660c464d5fee357475f9f169b24e"
           }
         }
       ],
