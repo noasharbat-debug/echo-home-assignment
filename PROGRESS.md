@@ -2470,8 +2470,29 @@ after the fix. `make test` printed all 6 scenarios as `PASS`.
 
 **Second fresh clone (Part 4.4):** a second, independent clone into a new sibling
 directory (`echo-home-assignment-audit2`), with local Docker image/builder state
-cleared beforehand, ran `make all` end to end with the committed fix already in
-place. Result and exact digest recorded in the commit that lands this section (see
-commit log for the pushed transcript); the key claim under test — that the
-digest-reproducibility fix, not just the rename fix, survives a from-scratch
-clone — was confirmed there, not assumed here.
+cleared beforehand, checked out commit `df45dc9` (this fix, already pushed) and ran
+`make all` end to end with a fully cold Docker build cache — nginx compiled from
+source again, package built, image assembled, all 6 compatibility scenarios `PASS`,
+exit 0.
+
+Its image digest was `sha256:84619dbe13e9f15550215e489a8fcb18a15a00784495d81e2bf6c05509e1b61e`
+— different from the first clone's `sha256:118ecfeec629...`, even with
+`--provenance=false --sbom=false` applied in both. So the digest fix only guarantees
+reproducibility for repeated builds *within one checkout* (verified: two back-to-back
+builds there were byte-identical), not bit-for-bit identity *across independent git
+clones* — most likely because each fresh `git clone` sets file checkout mtimes to
+its own clone time, and those mtimes get baked into the resulting Docker layers.
+Achieving true cross-clone digest identity would need normalizing file
+mtimes/`SOURCE_DATE_EPOCH`-style build reproducibility, which is out of scope here.
+
+This residual gap turned out not to matter in practice, verified directly rather than
+assumed: both Trivy and Grype, run against this second clone's actual image (digest
+`84619dbe...`, which does **not** match the OCI digest pinned in the committed
+`vex.json`), still suppressed `CVE-2026-60005` correctly with `--vex vex.json`
+(present with 1 hit each with no VEX, 0 hits with VEX applied, both tools). Both
+scanners' VEX product-matching keys primarily off the Debian package purl
+(`pkg:deb/debian/nginx@1.25.5-echo1...`), not exclusively the OCI digest, so the
+suppression that matters for this project's actual deliverable is unaffected by the
+digest not being perfectly reproducible across clones. The OCI purl remains a
+"best effort, update on rebuild" secondary identifier, documented as such in
+README.md's Residual risk section.

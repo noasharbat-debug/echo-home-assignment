@@ -181,6 +181,16 @@ builds of the identical Dockerfile/.deb produced different digests without the f
 and the identical digest with them. `vex.json` pins this digest per CVE statement, so
 without the flags the pin would go stale on every `make image`, not just when the
 image's actual content changes, silently breaking VEX suppression evidence over time.
+This only guarantees reproducibility for repeated builds *within one checkout*,
+though — two independent `git clone`s of this repo still produce different image
+digests even with the flags (likely each clone's checkout mtimes getting baked into
+the resulting layers), confirmed by comparing two fresh clones' builds in
+`PROGRESS.md` Mission 8. In practice this residual gap doesn't break VEX
+suppression: both Trivy and Grype key `--vex` product matching primarily off the
+Debian package purl, not the OCI digest, and suppression was verified to still work
+against a clone whose actual digest didn't match the one pinned in `vex.json`. The
+OCI purl is a best-effort secondary identifier, refreshed on each `make image`, not
+a guarantee of cross-clone byte identity.
 
 **Scanner identity is intentional:** Mission 6 changed the Debian metadata package
 name from `nginx-echo` to `nginx` while retaining the `echo-nginx` image name and
