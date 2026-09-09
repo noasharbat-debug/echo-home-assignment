@@ -2329,3 +2329,26 @@ Total: 245 (UNKNOWN: 5, LOW: 90, MEDIUM: 93, HIGH: 53, CRITICAL: 4)
 The no-VEX files contain the finding lines above; the VEX files contain zero
 matches for `CVE-2026-60005`. This is the scanner-visible before/after demonstration
 that CVE-2024-7347 cannot provide.
+
+### 4. Fresh-clone reproducibility
+
+Commit `dca572590de5372dc5f35dff79a38615aca2b0a0` was cloned into a new sibling
+directory after removing the project images and pruning the Docker builder cache.
+The fresh clone ran the complete `make all` workflow. The uncached builder showed
+the nginx download, both patch dry-runs, configure, compilation, and package
+creation, followed by the runtime image build. The final compatibility output was:
+
+```
+[PASS] 1. GET / (default page)
+[PASS] 2. Custom config mount
+[PASS] 3. Large body (client_max_body_size boundary)
+[PASS] 4. Malformed request (raw socket)
+[PASS] 5. Non-existent path (404)
+[PASS] 6. Headers spot check + Server header
+
+======================================================================
+ALL 6 SCENARIOS PASSED
+```
+
+This confirms the committed build path works from a genuinely fresh checkout and
+does not depend on the original directory's generated `.deb` or image tags.
