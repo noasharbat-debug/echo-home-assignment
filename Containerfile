@@ -3,7 +3,7 @@
 # Two-stage build:
 #   1. `builder` — reuses Mission 2's already-built output (the `echo-nginx-builder`
 #      image, produced by `cd build && make build`, which is a `scratch`-based image
-#      whose only content is /output/nginx-echo_*.deb). This stage does NOT
+#      whose only content is /output/nginx_*.deb). This stage does NOT
 #      recompile nginx; it just gives us a `COPY --from=` source for the .deb.
 #      PREREQUISITE: `cd build && make build` must have been run at least once so the
 #      local Docker image tag `echo-nginx-builder` exists (build/output/*.deb is

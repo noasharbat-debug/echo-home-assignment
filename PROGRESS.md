@@ -2330,6 +2330,66 @@ The no-VEX files contain the finding lines above; the VEX files contain zero
 matches for `CVE-2026-60005`. This is the scanner-visible before/after demonstration
 that CVE-2024-7347 cannot provide.
 
+## Mission 7: package-rename fallout audit
+
+The audit began from a clean worktree and confirmed the suspected identity drift:
+
+```
+$ docker inspect echo-nginx --format='{{.Id}}'
+sha256:827ef47a70613b9e1f96a3d6226a4325bf6ba80c3c8884afd64ddb84b8708198
+$ docker run --rm --entrypoint bash echo-nginx -c "dpkg -l | grep -i nginx"
+ii  nginx  1.25.5-echo1  amd64  nginx 1.25.5 (Echo build) with nginx security backports
+```
+
+Problem A was real: the CVE-2024-7347 VEX statement still used the old
+`pkg:deb/debian/nginx-echo` purl and an older OCI digest. The CVE-2026-60005
+statement already used the new Debian package name, but its OCI digest was also
+stale because the image had been rebuilt since Mission 6. Both statements now use
+the current package purl and final clean-build image ID:
+
+```
+sha256:594068698b9618000b9783b0ebfc4c81ca1d6ca78fe5e8d67e69245e0d0ca7ca
+```
+
+The CPE identifier remains `cpe:2.3:a:nginx:nginx:1.25.5:*:*:*:*:*:*:*`; it is
+package-name-agnostic and was already correct. The `.deb` Depends line remains
+`libc6, libpcre3, zlib1g, libssl3`, and `postinst` contains no hard-coded old
+package identity, so neither required a change.
+
+Problem B was also real: the builder emitted `nginx-echo_${PKG_VERSION}_amd64.deb`
+while its control metadata said `Package: nginx`. The output filename is now
+`nginx_${PKG_VERSION}_amd64.deb`. A stale ignored old artifact was found during
+the first rebuild; `make -C build clean` removed it, and the clean build produced
+exactly one artifact:
+
+```
+nginx_1.25.5-echo1_amd64.deb
+```
+
+The full repository search found old package names in historical Mission 3/5
+transcripts and in the Mission 6 discovery narrative. Those are retained as
+historical evidence. Active README/build comments, the artifact filename, and
+both VEX statements now describe the current package identity. `echo-nginx`
+continues to mean the runtime image and was not renamed.
+
+### Mission 7 verification
+
+The clean rebuild completed, then fresh scans confirmed the VEX behavior remained
+intact:
+
+```
+-- no VEX --
+Trivy: Total: 246 (UNKNOWN: 5, LOW: 90, MEDIUM: 93, HIGH: 54, CRITICAL: 4)
+  CVE-2026-60005 present
+Grype: nginx  1.25.5-echo1  deb  CVE-2026-60005  High  0.7% (51st)  0.6
+
+-- with --vex vex.json --
+Trivy: Total: 245 (UNKNOWN: 5, LOW: 90, MEDIUM: 93, HIGH: 53, CRITICAL: 4)
+Grype: no CVE-2026-60005 line
+```
+
+`make test` then printed all six compatibility scenarios as `PASS`.
+
 ### 4. Fresh-clone reproducibility
 
 Commit `dca572590de5372dc5f35dff79a38615aca2b0a0` was cloned into a new sibling
