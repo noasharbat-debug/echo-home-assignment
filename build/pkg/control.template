@@ -1,11 +1,11 @@
-Package: nginx-echo
+Package: nginx
 Version: __PKG_VERSION__
 Section: httpd
 Priority: optional
 Architecture: amd64
 Depends: libc6, libpcre3, zlib1g, libssl3
 Maintainer: Echo Build <noasharbat@gmail.com>
-Description: nginx 1.25.5 (Echo build) with CVE-2024-7347 backport
+Description: nginx 1.25.5 (Echo build) with nginx security backports
  From-source build of nginx 1.25.5 replicating the exact ./configure flags of
  the official nginx:1.25-bookworm Docker image, with the official upstream
  patch for CVE-2024-7347 (mp4 module buffer over-read) applied before compile.
