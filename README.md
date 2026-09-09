@@ -1,7 +1,7 @@
 # Echo
 
-Echo is a drop-in, from-source replacement for `nginx:1.25-bookworm` that fixes two
-real CVEs (one OpenSSL dependency bump, one nginx-core source backport), ships with
+Echo is a drop-in, from-source replacement for `nginx:1.25-bookworm` that fixes three
+real CVEs (one OpenSSL dependency bump, two nginx-core source backports), ships with
 vulnerability-scan evidence and a VEX document, and includes an automated
 compatibility test suite that runs the original and the replacement side by side.
 
@@ -89,16 +89,19 @@ container *behavior* — `User`, `WorkingDir`, `Entrypoint`, `Cmd`, `ExposedPort
 |---|---|---|---|
 | **CVE-2024-6119** | High (Grype/EPSS 66.6%, 99th percentile; OpenSSL's own advisory rates it "Moderate" — noting the discrepancy) | **Bump** — `libssl3`/`openssl` upgraded from the vulnerable `3.0.11-1~deb12u2` to `3.0.20-1~deb12u2` via `apt-get install` against Debian bookworm's default repos (`bookworm/main` + `bookworm-security`), run in the runtime stage of `Containerfile` (not just the discarded builder stage) | [Trivy/aquasec advisory](https://avd.aquasec.com/nvd/cve-2024-6119) — the citation Trivy's own scan output uses |
 | **CVE-2024-7347** | Low (per nginx.org's own advisory — chosen for being the cleanest available backport, not the highest severity) | **Backport** — the official nginx.org standalone patch applied with `patch -p1` to the nginx 1.25.5 source tree in `build/Dockerfile.build`, before `./configure && make`. Widens a counter from `uint32_t` to `uint64_t` in `ngx_http_mp4_crop_stsc_data()` (`src/http/modules/ngx_http_mp4_module.c`) to prevent a buffer over-read from unordered `stsc` atom chunks in a crafted mp4 file, and adds an explicit `next_chunk < chunk` rejection — the same fix nginx.org shipped upstream in 1.27.1/1.26.2 | Official patch: [`nginx.org/download/patch.2024.mp4.txt`](https://nginx.org/download/patch.2024.mp4.txt) (mirrored at `build/patches/CVE-2024-7347.patch`); advisory background: [nginx.org security advisories](https://nginx.org/en/security_advisories.html) / [nginx.org CHANGES](https://nginx.org/en/CHANGES); GHSA: [`GHSA-3r23-64c4-mj87`](https://github.com/advisories/GHSA-3r23-64c4-mj87) |
+| **CVE-2026-60005** | High | **Backport** — upstream nginx commit `b99f804ad38a60ceb07bc429598d5b2c4e70e336` adds `r->ncaptures = 0` when regex captures are reallocated, preventing stale unnamed-capture bounds from exposing uninitialized memory through slice/cache subrequests. It applies to nginx 1.25.5 with a context offset and is applied before compilation | [F5 advisory K000162100](https://my.f5.com/manage/s/article/K000162100); upstream fix commit [`b99f804`](https://github.com/nginx/nginx/commit/b99f804ad38a60ceb07bc429598d5b2c4e70e336); patch: `build/patches/CVE-2026-60005.patch` |
 
-Both fixes are recorded, with full command-level verification (patch dry-run/apply
+All three fixes are recorded, with full command-level verification (patch dry-run/apply
 transcripts, `nginx -V` diffs, `ldd`/`dpkg -l` proof that the fixed library is what
 actually links into the shipped binary), in `PROGRESS.md`'s Mission 2 and Mission 3
-sections. A second, higher-severity candidate backport (CVE-2026-32647, also an
-mp4-module fix) was researched, its patch downloaded and dry-run-verified as also
-applying cleanly, and deliberately kept **unused** in `build/patches/` as due
-diligence — CVE-2024-7347 was chosen as primary because it has an official
-vendor-published single-function patch, which is lower-risk to backport correctly
-than a 5-hunk fix pulled from a bare GitHub commit.
+sections. The Mission 6 research also fetched and dry-run-tested the candidate
+areas. CVE-2026-60005 was selected because its real upstream fix is a one-line
+invariant repair with a clean dry-run against 1.25.5. CVE-2026-42533 was rejected
+because no equally isolated map/regex fix commit could be identified in the public
+mirror and the likely backport is higher-risk; CVE-2026-56434 was rejected because
+its SSI use-after-free path is broader and requires more configuration-specific
+validation. The existing CVE-2026-32647 mp4 patch remains unused as prior
+due-diligence evidence.
 
 The GHSA ID above was double-checked deliberately: an earlier draft cited a
 different, invented-looking GHSA ID that turned out not to exist (a live fetch of its
@@ -121,7 +124,7 @@ Trivy and Grype. Raw reports are committed at the repo root:
 | Trivy | 709 (UNKNOWN 34, LOW 221, MEDIUM 275, HIGH 159, CRITICAL 20) | 240 (UNKNOWN 5, LOW 87, MEDIUM 92, HIGH 52, CRITICAL 4) |
 | Grype | 696 matches (High 218, Critical 44, Medium 234, Negligible 129, Low 31, Unknown 40) | 230 matches (High 57, Critical 9, Medium 67, Negligible 65, Low 8, Unknown 24) |
 
-**Read this drop honestly, not as "660+ CVEs fixed."** Only two CVEs were
+**Read this drop honestly, not as "660+ CVEs fixed."** Only three CVEs were
 deliberately, individually fixed by this project (the table above). The rest of the
 drop is mostly because `echo-nginx`'s base (`debian:bookworm-slim`, built fresh at
 build time) is a more current bookworm point release than whatever base layer the
@@ -143,6 +146,14 @@ scanner flagged this CVE against nginx in the baseline scan of the still-vulnera
 original image either. There was nothing for the fix, or the VEX document, to make
 disappear.
 
+**CVE-2026-60005 specifically: this is the demonstrated VEX case.** With the
+scanner-visible `nginx` Debian package identity, a fresh no-VEX scan of the rebuilt
+image reported the CVE in both tools. Trivy's targeted output was `Total: 246` and
+included `CVE-2026-60005`; Grype reported `nginx 1.25.5-echo1 ... CVE-2026-60005`.
+The same image with `--vex vex.json` contained no matching CVE line in either scan;
+Trivy's targeted total became 245. The exact commands and output are recorded in
+`PROGRESS.md` Mission 6.
+
 ---
 
 ## Residual risk assessment
@@ -154,30 +165,18 @@ disappear.
   `debian:bookworm-slim`, not nginx-specific and out of scope for "fix the app, not
   the whole base OS" per this project's original triage. Routine `apt-get upgrade`
   could shrink this further but wasn't the deliverable.
-- Three real, higher-severity nginx-core CVEs were identified during triage and
-  **deliberately not backported**: `CVE-2026-42533` (Critical — map directive +
-  regex heap buffer overflow), `CVE-2026-60005` (High — uninitialized memory with
-  unnamed regex captures + slice/cache), and `CVE-2026-56434` (High — SSI filter
-  module use-after-free). All three are real and fixed upstream (nginx 1.31.3), but
-  none has an official standalone patch file — only bare commit diffs against a
-  nginx tree many releases ahead of 1.25.5 — making a clean, low-risk backport onto
-  this codebase impractical within this project's scope. They remain open risk in
-  this image exactly as they are in the unmodified original.
+- Two real higher-severity nginx-core CVEs remain deliberately unbackported:
+  `CVE-2026-42533` (Critical — map directive + regex heap buffer overflow) and
+  `CVE-2026-56434` (High — SSI filter module use-after-free). Their upstream fixes
+  need broader manual backporting and configuration-specific validation than this
+  mission could justify. `CVE-2026-60005` is no longer in this list: its upstream
+  fix is applied and its VEX suppression is demonstrated above.
 
-**A scanner-visibility gap you should not mistake for a security improvement:**
-post-fix, Grype's scan of `echo-nginx` reports **zero** CVEs attributed to the nginx
-package directly — down from 6 in the baseline (`CVE-2023-44487`, `CVE-2026-42533`,
-`CVE-2009-4487`, `CVE-2013-0337`, `CVE-2026-60005`, `CVE-2026-56434`). **This is not
-because those CVEs got fixed.** It's because this project's built Debian package is
-named `nginx-echo` (to distinguish it from the stock `nginx` package), and Grype's
-NVD/CPE product matching keys off the discovered package name — once the package is
-no longer literally named `nginx`, Grype can no longer identify it as an instance of
-the `nginx` product at all, for *any* CVE, fixed or not. The three CVEs listed above
-are still genuinely present and unpatched in this image; Grype's post-fix scan is
-simply blind to them now. A more conservative packaging choice (naming the built
-package `nginx` instead of `nginx-echo`) would have preserved that scanner
-visibility at the cost of identity/provenance clarity between the stock and Echo
-builds — a real trade-off, not an oversight, and one worth revisiting with more time.
+**Scanner identity is intentional:** Mission 6 changed the Debian metadata package
+name from `nginx-echo` to `nginx` while retaining the `echo-nginx` image name and
+`1.25.5-echo1` version. This preserves Grype/Trivy's nginx visibility, which is
+required for an honest VEX before/after demonstration; it does not change the nginx
+binary, HTTP behavior, or runtime image identity.
 
 **CVE-2024-7347's own visibility, separately:** as noted above, this CVE was never
 flagged by either scanner against nginx in *either* image, before or after the fix.
@@ -199,12 +198,8 @@ CVE-2024-7347 given these tools' current databases.
 1. Backport at least `CVE-2026-42533` (the Critical one) properly — likely requires
    manually porting the map/regex fix commit rather than relying on a vendor patch
    file, and more test coverage around the `map` directive to validate the backport.
-2. Reconsider the `nginx-echo` package name, or add a `Provides: nginx` (or similar)
-   to the `.deb` control file, specifically to restore Grype's CPE-based visibility
-   without giving up the renamed identity — needs testing to confirm it actually
-   changes Grype's matching behavior before relying on it.
-3. Add TLS/HTTPS test coverage (see Test coverage below — currently untested).
-4. Add a live functional test for the mp4 module fix itself (a crafted malformed mp4
+2. Add TLS/HTTPS test coverage (see Test coverage below — currently untested).
+3. Add a live functional test for the mp4 module fix itself (a crafted malformed mp4
    file through a real `mp4` directive location), rather than relying solely on
    source-patch verification, to catch a future accidental regression.
 

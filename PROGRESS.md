@@ -2212,3 +2212,120 @@ own verification work (the unquoted `$(MAKE)` path, and the CRLF-on-checkout ris
 genuinely fresh clone" issue the mission asked to guard against, and both were
 caught because the clean-clone run was actually executed rather than assumed to
 pass. Nothing was skipped, faked, or commented out.
+
+## Mission 6: CVE-2026-60005 backport and demonstrated VEX
+
+Status: COMPLETE pending the fresh-clone run below. This mission adds a third
+source backport and leaves the existing CVE-2024-6119 and CVE-2024-7347 work
+unchanged.
+
+### 1. Baseline and upstream research
+
+The required pre-edit baseline completed with the existing GNU Make executable:
+
+```
+$ make all
+[PASS] 1. GET / (default page)
+[PASS] 2. Custom config mount
+[PASS] 3. Large body (client_max_body_size boundary)
+[PASS] 4. Malformed request (raw socket)
+[PASS] 5. Non-existent path (404)
+[PASS] 6. Headers spot check + Server header
+ALL 6 SCENARIOS PASSED
+```
+
+The checked-in baseline was verified directly: `baseline-grype.txt` contains
+CVE-2026-42533, CVE-2026-60005, and CVE-2026-56434; neither baseline scan contains
+CVE-2024-7347.
+
+Live fetches used nginx.org security advisories, the CVE authority record at
+`https://cveawg.mitre.org/api/cve/CVE-2026-60005`, and the public mirror at
+`https://github.com/nginx/nginx.git`. The selected fix is:
+
+```
+b99f804ad38a60ceb07bc429598d5b2c4e70e336
+Author: Pavel Pautov <p.pautov@f5.com>
+Subject: Fixed uninitialized memory read caused by stale regex captures.
+```
+
+The CVE record describes the same slice/unnamed-regex-capture uninitialized-memory
+issue and credits F5; the commit author is Pavel Pautov at f5.com. The diff resets
+`r->ncaptures` when `ngx_http_regex_exec()` reallocates `r->captures`, matching the
+technical description rather than relying on the credit line alone.
+
+Real dry-run comparisons against nginx 1.25.5 were:
+
+```
+=== b99f804 dry-run ===
+Checking patch src/http/ngx_http_variables.c...
+Hunk #1 succeeded at 2626 (offset -55 lines).
+exit=0
+=== 0cca8e05 dry-run ===
+Checking patch src/http/ngx_http_variables.c...
+Hunk #1 succeeded at 2626 (offset -59 lines).
+exit=0
+=== 5f54125d dry-run ===
+... 10 hunks across ngx_http_proxy_module.c, ngx_http.c,
+    ngx_http_core_module.c, and ngx_http_core_module.h ...
+exit=0
+```
+
+CVE-2026-60005 was selected because its real fix is a one-line invariant repair
+with a clean dry-run. CVE-2026-42533 was rejected because no equally isolated
+map/regex fix commit could be identified in the public mirror and the likely
+backport is higher-risk. CVE-2026-56434 was rejected because its SSI use-after-free
+path is broader and needs configuration-specific validation. The existing
+CVE-2026-32647 patch remains unused.
+
+### 2. Patch, build, and test
+
+Added `build/patches/CVE-2026-60005.patch` containing the upstream one-line diff
+and applied it in `build/Dockerfile.build` after CVE-2024-7347. The build output
+showed the new patch step, its dry-run, configure, compilation, and `.deb` creation.
+
+The first no-VEX scan exposed the pre-existing `nginx-echo` package-name visibility
+problem: neither scanner reported this CVE. To make the requested before/after
+demonstration real, `build/pkg/control.template` now names the Debian package
+`nginx` while retaining the `echo-nginx` image name and `1.25.5-echo1` version.
+This does not change the nginx binary or HTTP behavior.
+
+Fresh no-VEX scans of the rebuilt image produced:
+
+```
+-- fixed-cve60005-trivy-no-vex.txt --
+Total: 246 (UNKNOWN: 5, LOW: 90, MEDIUM: 93, HIGH: 54, CRITICAL: 4)
+| CVE-2026-60005 | ... | nginx: NGINX: Memory disclosure and denial of service ... |
+
+-- fixed-cve60005-grype-no-vex.txt --
+nginx  1.25.5-echo1  deb  CVE-2026-60005  High  0.7% (51st)  0.6
+```
+
+The full compatibility run then completed:
+
+```
+[PASS] 1. GET / (default page)
+[PASS] 2. Custom config mount
+[PASS] 3. Large body (client_max_body_size boundary)
+[PASS] 4. Malformed request (raw socket)
+[PASS] 5. Non-existent path (404)
+[PASS] 6. Headers spot check + Server header
+ALL 6 SCENARIOS PASSED
+```
+
+### 3. VEX before/after proof
+
+Extended the existing `vex.json` with an OpenVEX `status: fixed` statement for
+CVE-2026-60005, targeting the actual Debian package and rebuilt image digest.
+JSON parsing succeeded before the scans. With `--vex vex.json`:
+
+```
+-- fixed-cve60005-trivy-vex.txt --
+Total: 245 (UNKNOWN: 5, LOW: 90, MEDIUM: 93, HIGH: 53, CRITICAL: 4)
+
+-- fixed-cve60005-grype-vex.txt --
+[no CVE-2026-60005 line]
+```
+
+The no-VEX files contain the finding lines above; the VEX files contain zero
+matches for `CVE-2026-60005`. This is the scanner-visible before/after demonstration
+that CVE-2024-7347 cannot provide.

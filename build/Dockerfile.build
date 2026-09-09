@@ -44,6 +44,14 @@ RUN cd nginx-${NGINX_VERSION} && \
     patch -p1 --dry-run < /build/CVE-2024-7347.patch && \
     patch -p1 < /build/CVE-2024-7347.patch
 
+# --- Backport CVE-2026-60005 (slice/regex capture uninitialized memory) ---
+# Upstream commit b99f804; the one-line invariant repair applies to nginx
+# 1.25.5 with only a context offset (see PROGRESS.md Mission 6).
+COPY patches/CVE-2026-60005.patch /build/CVE-2026-60005.patch
+RUN cd nginx-${NGINX_VERSION} && \
+    patch -p1 --dry-run < /build/CVE-2026-60005.patch && \
+    patch -p1 < /build/CVE-2026-60005.patch
+
 # --- Configure & build ------------------------------------------------
 # Exact flags copied from build/original-nginx-V.txt (the baseline image's
 # own `nginx -V` configure-arguments line) so the module set and paths are
